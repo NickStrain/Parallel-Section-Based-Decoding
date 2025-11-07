@@ -66,6 +66,39 @@ Return your answer in **strict JSON** with this exact format:
 """ 
         response = self.llm_structural.generate_text(prompt=structure_prompt_template)
         return response
+    
+
+class WorkerNodes:
+    """
+    This is the class of woker llm node, there will be multiple worker node 
+    this workere node generate content seperatly and then merge together... 
+    """
+    def __init__(self, gemini_client: GeminiClient):
+        self.worker_node  = gemini_client
+
+    def worker_node_generation(self, title: str, instructions: str ,worker_node_no: int ):
+        worker_node_prompt_template = f"""
+You are a specialized worker node in a distributed large language model system.
+YOU ARE WORKER NODE NUMBER {worker_node_no}
+Your task:
+You will be given one specific reasoning section to complete, based on the master plan of a larger question.
+
+Follow these instructions carefully:
+
+1. Focus ONLY on the section assigned to you.
+2. Do not repeat or summarize content from other sections.
+3. Write a clear, detailed, and coherent explanation according to your assigned instruction.
+4. Ensure your output can be directly merged with outputs from other worker nodes to form a complete, logically flowing answer.
+
+Section Information:
+{title}
+
+Instructions:
+{instructions}
+
+"""
+        response = self.worker_node.generate_text(prompt=worker_node_prompt_template)
+        return response 
         
 def structural_responsetojson(response: str):
     match =  re.search(r"```json\s*(\{.*?\})\s*```", response, re.DOTALL)
@@ -88,7 +121,18 @@ def main():
     
     response = llm1.generate_structural_response(prompt="explain quantum computing in simple terms")
     response = structural_responsetojson(response)
-    print(response)    
+    result = ''
+    for section  in response['sections']:
+        worker_node_llm = WorkerNodes(GeminiClient(api_key=os.getenv("GEMINI_API_KEY")))
+        resp = worker_node_llm.worker_node_generation(
+            title= section["title"],
+            instructions= section["instruction"],
+            worker_node_no= response["num_workers"]
+        )
+        result += resp
+        result += '\n'
+    
+    print(result)    
 
     pass
 if __name__ == "__main__":
